@@ -1,48 +1,30 @@
-# Dockerfile for Railway deployment
-FROM node:18-alpine AS base
+# Simple single-stage Dockerfile for Railway
+FROM node:18-alpine
 
-# Install dependencies only when needed
-FROM base AS deps
-RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
 # Install dependencies
-COPY package*.json ./
-RUN npm ci --legacy-peer-deps
-
-# Rebuild the source code only when needed
-FROM base AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
-
-# Build Next.js application
-RUN npm run build
-
-# Verify .next directory was created
-RUN ls -la .next
-
-# Production image, copy all the files and run next
-FROM base AS runner
-WORKDIR /app
-
-ENV NODE_ENV production
+RUN apk add --no-cache libc6-compat
 
 # Copy package files
 COPY package*.json ./
-COPY --from=deps /app/node_modules ./node_modules
 
-# Copy built application
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/next.config.js ./
+# Install dependencies
+RUN npm ci --legacy-peer-deps
 
-# Verify .next was copied
-RUN ls -la && echo "Checking .next directory:" && ls -la .next || echo ".next directory not found!"
+# Copy all source files
+COPY . .
+
+# Build the application
+RUN npm run build
+
+# Verify build completed
+RUN echo "Build complete. Contents of .next:" && ls -la .next
+
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
 
 EXPOSE 3000
-
-ENV PORT 3000
-ENV HOSTNAME "0.0.0.0"
 
 CMD ["npm", "start"]
