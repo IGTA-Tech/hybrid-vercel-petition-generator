@@ -1,3 +1,6 @@
+// Load polyfills before Next.js build
+require('./file-polyfill.js');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: false,
