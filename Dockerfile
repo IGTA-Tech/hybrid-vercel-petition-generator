@@ -20,7 +20,7 @@ COPY . .
 RUN npm run build
 
 # Verify .next directory was created
-RUN ls -la .next && echo "Build ID:" && cat .next/BUILD_ID
+RUN ls -la .next
 
 # Production image, copy all the files and run next
 FROM base AS runner
