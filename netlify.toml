@@ -8,13 +8,10 @@
 [build.environment]
   NODE_VERSION = "20"
 
-# Redirect all server routes to Netlify functions
-[[redirects]]
-  from = "/api/*"
-  to = "/.netlify/functions/:splat"
-  status = 200
+[functions]
+  node_bundler = "esbuild"
+  # Allow functions to run longer for document generation
 
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+# For background functions (long-running document generation)
+[functions."api/*"]
+  external_node_modules = ["sharp", "canvas", "tesseract.js"]

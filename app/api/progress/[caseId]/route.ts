@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// In-memory storage (shared with generate route)
+// In-memory storage (shared with generate route) - works on Netlify
 const globalForProgress = global as unknown as { progress?: Map<string, any> };
 const progress = globalForProgress.progress ?? new Map<string, any>();
 
-if (process.env.NODE_ENV !== 'production') {
-  globalForProgress.progress = progress;
-}
+// Always persist to global - Netlify functions have better instance reuse
+globalForProgress.progress = progress;
 
 export async function GET(
   request: NextRequest,

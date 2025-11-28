@@ -5,15 +5,14 @@ import { sendDocumentsEmail } from '@/app/lib/email-service';
 import fs from 'fs';
 import path from 'path';
 
-// In-memory storage (like paywall version) - works without Redis/KV
+// In-memory storage - works on Netlify due to persistent function instances
 const globalForCases = global as unknown as { cases?: Map<string, PetitionCase>; progress?: Map<string, any> };
 const cases = globalForCases.cases ?? new Map<string, PetitionCase>();
 const progress = globalForCases.progress ?? new Map<string, any>();
 
-if (process.env.NODE_ENV !== 'production') {
-  globalForCases.cases = cases;
-  globalForCases.progress = progress;
-}
+// Always persist to global - Netlify functions have better instance reuse than Vercel
+globalForCases.cases = cases;
+globalForCases.progress = progress;
 
 export async function POST(request: NextRequest) {
   try {

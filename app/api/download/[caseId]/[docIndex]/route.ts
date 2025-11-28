@@ -2,13 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 
-// In-memory storage (shared with generate route)
+// In-memory storage (shared with generate route) - works on Netlify
 const globalForCases = global as unknown as { cases?: Map<string, any> };
 const cases = globalForCases.cases ?? new Map<string, any>();
 
-if (process.env.NODE_ENV !== 'production') {
-  globalForCases.cases = cases;
-}
+// Always persist to global - Netlify functions have better instance reuse
+globalForCases.cases = cases;
 
 export async function GET(
   request: NextRequest,

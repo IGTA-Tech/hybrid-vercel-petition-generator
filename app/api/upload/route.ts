@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { put } from '@vercel/blob';
 import { processFile } from '@/app/lib/file-processor';
+import fs from 'fs';
+import path from 'path';
 
-export const runtime = 'nodejs';
-export const maxDuration = 60; // 60 seconds for file processing
-
+// Netlify-compatible file upload using local /tmp storage
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -47,21 +46,29 @@ export async function POST(request: NextRequest) {
     const url = new URL(request.url);
     const caseId = url.searchParams.get('caseId') || `temp_${Date.now()}`;
 
-    // Upload to Vercel Blob with caseId prefix for later cleanup
-    const blob = await put(`${caseId}/${file.name}`, file, {
-      access: 'public',
-      addRandomSuffix: true,
-    });
+    // Save to local /tmp directory (works on Netlify)
+    const tempDir = path.join('/tmp', 'uploads', caseId);
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+
+    const fileName = `${Date.now()}_${file.name}`;
+    const filePath = path.join(tempDir, fileName);
+    const fileBuffer = Buffer.from(await file.arrayBuffer());
+    fs.writeFileSync(filePath, fileBuffer);
 
     // Process file to extract text
     const processed = await processFile(file);
 
+    // Create a local URL for the file
+    const localUrl = `/tmp/uploads/${caseId}/${fileName}`;
+
     return NextResponse.json({
       success: true,
       blob: {
-        url: blob.url,
-        pathname: blob.pathname,
-        downloadUrl: blob.downloadUrl,
+        url: localUrl,
+        pathname: filePath,
+        downloadUrl: localUrl,
       },
       processed: {
         fileName: processed.fileName,
@@ -70,8 +77,8 @@ export async function POST(request: NextRequest) {
         pageCount: processed.pageCount,
         summary: processed.summary,
         extractedText: processed.extractedText, // Include full text for autofill
-        // Store blob URL for later exhibit generation
-        blobUrl: blob.url,
+        // Store local file path for later access
+        blobUrl: localUrl,
       },
     });
   } catch (error: any) {
