@@ -2,6 +2,24 @@ import mammoth from 'mammoth';
 import { createWorker } from 'tesseract.js';
 import { PDFDocument } from 'pdf-lib';
 
+// Polyfill for File type in Node.js environment during build
+// @ts-ignore
+if (typeof File === 'undefined') {
+  // @ts-ignore
+  global.File = class File {
+    constructor(public parts: any[], public name: string, public options: any = {}) {}
+    get type() {
+      return this.options.type || '';
+    }
+    async arrayBuffer() {
+      return this.parts[0];
+    }
+    async text() {
+      return this.parts[0].toString();
+    }
+  };
+}
+
 export interface ProcessedFile {
   fileName: string;
   fileType: string;
