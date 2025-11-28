@@ -65,13 +65,6 @@ export default function Home() {
 
     for (const file of pendingFiles) {
       try {
-        // Generate caseId if not already present (file uploads might happen before submit)
-        let currentCaseId = caseId;
-        if (!currentCaseId) {
-          currentCaseId = `case_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-          setCaseId(currentCaseId);
-        }
-
         // Update status to uploading
         file.status = 'uploading';
         setUploadedFiles([...files]);
@@ -80,8 +73,8 @@ export default function Home() {
         const formDataToUpload = new FormData();
         formDataToUpload.append('file', file.file);
 
-        // Upload file with caseId
-        const response = await fetch(`/api/upload?caseId=${currentCaseId}`, {
+        // Upload file (no caseId needed for upload)
+        const response = await fetch('/api/upload', {
           method: 'POST',
           body: formDataToUpload,
         });
@@ -300,7 +293,7 @@ export default function Home() {
   };
 
   // Show progress page if generation has started
-  if (caseId) {
+  if (caseId && generating) {
     return <GenerationProgress caseId={caseId} />;
   }
 
