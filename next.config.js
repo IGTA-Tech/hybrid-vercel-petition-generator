@@ -1,7 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
-  output: 'standalone',
+  reactStrictMode: false, // Disable to avoid React Context issues during build
   experimental: {
     serverActions: {
       bodySizeLimit: '50mb',
