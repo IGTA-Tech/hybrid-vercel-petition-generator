@@ -167,7 +167,7 @@ export async function extractTextFromImage(buffer: Buffer): Promise<string> {
 /**
  * Process a single file and extract text based on type
  */
-export async function processFile(file: File): Promise<ProcessedFile> {
+export async function processFile(file: any): Promise<ProcessedFile> {
   const buffer = Buffer.from(await file.arrayBuffer());
   let extractedText = '';
   let pageCount: number | undefined;
@@ -215,7 +215,7 @@ export async function processFile(file: File): Promise<ProcessedFile> {
 /**
  * Process multiple files
  */
-export async function processFiles(files: File[]): Promise<ProcessedFile[]> {
+export async function processFiles(files: any[]): Promise<ProcessedFile[]> {
   const processPromises = files.map(file => processFile(file));
   return Promise.all(processPromises);
 }
