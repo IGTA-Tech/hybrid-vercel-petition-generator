@@ -19,7 +19,7 @@ export default function FileUpload({
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [error, setError] = useState<string>('');
 
-  const onDrop = useCallback((acceptedFiles: File[], rejectedFiles: any[]) => {
+  const onDrop = useCallback((acceptedFiles: any[], rejectedFiles: any[]) => {
     setError('');
 
     // Check file count
