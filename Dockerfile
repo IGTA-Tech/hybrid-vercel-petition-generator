@@ -15,11 +15,11 @@ RUN npm ci --legacy-peer-deps
 # Copy all source files
 COPY . .
 
-# Build the application
-RUN npm run build
+# Build the application (run next build directly to see errors)
+RUN npx next build
 
 # Verify build completed
-RUN echo "Build complete. Contents of .next:" && ls -la .next
+RUN echo "Build complete. Contents of .next:" && ls -la .next && echo "BUILD_ID:" && cat .next/BUILD_ID
 
 ENV NODE_ENV=production
 ENV PORT=3000
