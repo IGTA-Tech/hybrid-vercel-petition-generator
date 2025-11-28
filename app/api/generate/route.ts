@@ -34,14 +34,14 @@ export async function POST(request: NextRequest) {
       beneficiary: {
         name: beneficiaryInfo.fullName,
         visaType: beneficiaryInfo.visaType,
-        field: beneficiaryInfo.field || '',
+        field: beneficiaryInfo.fieldOfProfession || beneficiaryInfo.fieldOfExpertise || '',
         email: beneficiaryInfo.recipientEmail,
-        achievements: beneficiaryInfo.achievements,
+        achievements: beneficiaryInfo.additionalInfo,
         background: beneficiaryInfo.background,
-        urls: beneficiaryInfo.urls,
+        urls: beneficiaryInfo.primaryUrls || beneficiaryInfo.urls || [],
       },
       status: 'processing' as const,
-      uploadedDocs: beneficiaryInfo.uploadedDocuments?.map(doc => ({
+      uploadedDocs: beneficiaryInfo.uploadedFiles?.map(doc => ({
         fileName: doc.fileName,
         blobKey: doc.blobUrl,
         size: doc.wordCount || 0,
