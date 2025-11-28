@@ -1,0 +1,6 @@
+.vercel
+.env
+.env.local
+.env*.local
+VERCEL_ENV_SETUP.md
+*_ENV_SETUP.md
