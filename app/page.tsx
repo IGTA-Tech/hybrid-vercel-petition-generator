@@ -817,16 +817,6 @@ export default function Home() {
                 />
 
                 {/* View Job History Button */}
-                {formData.recipientEmail && formData.recipientEmail.includes('@') && (
-                  <button
-                    type="button"
-                    onClick={() => setShowHistory(true)}
-                    className="mt-3 flex items-center gap-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 transition-colors px-4 py-2 rounded-lg"
-                  >
-                    <History size={18} />
-                    <span className="text-sm font-medium">View My Previous Petitions</span>
-                  </button>
-                )}
               </div>
 
               {/* Brief Generation Mode Selection */}
