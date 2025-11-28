@@ -158,7 +158,10 @@ export async function uploadFile(
   const store = getUploadsStore();
   const blobKey = `${caseId}/${fileName}`;
 
-  await store.set(blobKey, fileBuffer);
+  // Convert Buffer to Uint8Array for Netlify Blobs
+  const data = fileBuffer instanceof Buffer ? new Uint8Array(fileBuffer) : fileBuffer;
+
+  await store.set(blobKey, data);
   console.log(`[Storage] Uploaded file ${fileName} for case ${caseId} (${fileBuffer.length} bytes)`);
 
   return blobKey;
