@@ -158,10 +158,12 @@ export async function uploadFile(
   const store = getUploadsStore();
   const blobKey = `${caseId}/${fileName}`;
 
-  // Convert Buffer to Uint8Array for Netlify Blobs
-  const data = fileBuffer instanceof Buffer ? new Uint8Array(fileBuffer) : fileBuffer;
+  // Convert to ArrayBuffer for Netlify Blobs compatibility
+  const arrayBuffer = fileBuffer instanceof Buffer
+    ? fileBuffer.buffer.slice(fileBuffer.byteOffset, fileBuffer.byteOffset + fileBuffer.byteLength) as ArrayBuffer
+    : fileBuffer.buffer.slice(fileBuffer.byteOffset, fileBuffer.byteOffset + fileBuffer.byteLength) as ArrayBuffer;
 
-  await store.set(blobKey, data);
+  await store.set(blobKey, arrayBuffer);
   console.log(`[Storage] Uploaded file ${fileName} for case ${caseId} (${fileBuffer.length} bytes)`);
 
   return blobKey;
@@ -227,7 +229,12 @@ export async function saveDocument(
   // If PDF buffer provided, store it separately
   if (documentData.pdfBuffer) {
     const pdfKey = `${caseId}/doc-${docIndex}.pdf`;
-    await store.set(pdfKey, documentData.pdfBuffer);
+    // Convert Buffer to ArrayBuffer for Netlify Blobs compatibility
+    const arrayBuffer = documentData.pdfBuffer.buffer.slice(
+      documentData.pdfBuffer.byteOffset,
+      documentData.pdfBuffer.byteOffset + documentData.pdfBuffer.byteLength
+    ) as ArrayBuffer;
+    await store.set(pdfKey, arrayBuffer);
     console.log(`[Storage] Saved PDF for document ${docIndex} in case ${caseId}`);
   }
 
