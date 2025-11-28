@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { put } from '@vercel/blob';
+import fs from 'fs';
+import path from 'path';
 import Anthropic from '@anthropic-ai/sdk';
 import { archiveUrls } from '@/app/lib/archive-org';
 import { convertUrlsToPdfs } from '@/app/lib/api2pdf';
@@ -12,7 +13,6 @@ const anthropic = new Anthropic({
 });
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 300; // 5 minutes for serverless function
 
 interface ExhibitRequest {
   urls: string[];
@@ -659,19 +659,27 @@ Return ONLY a JSON object with this exact structure:
     // Cleanup temporary uploaded documents BEFORE uploading combined PDF
     if (hasDocs) {
       try {
-        console.log('Cleaning up temporary uploaded documents...');
-        const { del: deleteBlob } = await import('@vercel/blob');
+        console.log('Cleaning up temporary uploaded documents from /tmp...');
 
-        // Delete each uploaded document by its blobUrl
-        const deletePromises = uploadedDocuments.map(doc => {
-          console.log(`Deleting: ${doc.blobUrl}`);
-          return deleteBlob(doc.blobUrl).catch(err => {
+        // Delete each uploaded document from local /tmp storage
+        uploadedDocuments.forEach(doc => {
+          try {
+            // Extract caseId and filename from blobUrl path
+            const urlParts = doc.blobUrl.split('/');
+            const caseId = urlParts[urlParts.length - 2];
+            const fileName = urlParts[urlParts.length - 1];
+            const filePath = path.join('/tmp', 'uploads', caseId, fileName);
+
+            if (fs.existsSync(filePath)) {
+              fs.unlinkSync(filePath);
+              console.log(`Deleted: ${fileName}`);
+            }
+          } catch (err) {
             console.error(`Failed to delete ${doc.fileName}:`, err);
             // Continue even if one delete fails
-          });
+          }
         });
 
-        await Promise.all(deletePromises);
         console.log(`Cleaned up ${uploadedDocuments.length} temporary files`);
       } catch (cleanupError) {
         console.error('Error during cleanup (non-fatal):', cleanupError);
@@ -679,11 +687,16 @@ Return ONLY a JSON object with this exact structure:
       }
     }
 
-    // Upload combined PDF AFTER cleanup
-    const combinedBlob = await put(`${caseId}/Complete_Exhibits.pdf`, combinedBuffer, {
-      access: 'public',
-      contentType: 'application/pdf',
-    });
+    // Save combined PDF to local /tmp storage
+    const tempDir = path.join('/tmp', 'exhibits', caseId);
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+
+    const pdfPath = path.join(tempDir, 'Complete_Exhibits.pdf');
+    fs.writeFileSync(pdfPath, combinedBuffer);
+
+    const localUrl = `/tmp/exhibits/${caseId}/Complete_Exhibits.pdf`;
 
     return NextResponse.json({
       success: true,
@@ -694,7 +707,7 @@ Return ONLY a JSON object with this exact structure:
         converted: uploadedExhibits.length,
         failed: (totalUrls + totalDocs) - uploadedExhibits.length,
         estimatedCost: totalCost,
-        combinedPdfUrl: combinedBlob.url,
+        combinedPdfUrl: localUrl,
         criterionGroups: sortedGroups.map(g => ({
           criterionNumber: g.criterionNumber,
           criterionName: g.criterionName,

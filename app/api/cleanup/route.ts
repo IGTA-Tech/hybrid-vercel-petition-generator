@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { list, del } from '@vercel/blob';
-
-export const runtime = 'nodejs';
-export const maxDuration = 60;
+import fs from 'fs';
+import path from 'path';
 
 /**
- * Cleanup endpoint to delete temporary files from Vercel Blob storage
+ * Cleanup endpoint to delete temporary files from local /tmp storage
  * Deletes all files with a specific caseId prefix
  */
 export async function POST(request: NextRequest) {
@@ -30,23 +28,31 @@ export async function POST(request: NextRequest) {
 
     console.log(`Starting cleanup for caseId: ${caseId}`);
 
-    // List all blobs with the caseId prefix
-    const { blobs } = await list({
-      prefix: `${caseId}/`,
-    });
+    // Clean up /tmp/uploads directory
+    const tempDir = path.join('/tmp', 'uploads', caseId);
+    let filesDeleted = 0;
 
-    console.log(`Found ${blobs.length} files to delete for caseId: ${caseId}`);
+    if (fs.existsSync(tempDir)) {
+      const files = fs.readdirSync(tempDir);
+      filesDeleted = files.length;
 
-    // Delete each blob
-    const deletePromises = blobs.map(blob => del(blob.url));
-    await Promise.all(deletePromises);
+      // Delete all files in the directory
+      files.forEach(file => {
+        fs.unlinkSync(path.join(tempDir, file));
+      });
 
-    console.log(`Cleanup completed for caseId: ${caseId}. Deleted ${blobs.length} files.`);
+      // Remove the directory
+      fs.rmdirSync(tempDir);
+
+      console.log(`Cleanup completed for caseId: ${caseId}. Deleted ${filesDeleted} files.`);
+    } else {
+      console.log(`No files found for caseId: ${caseId}`);
+    }
 
     return NextResponse.json({
       success: true,
-      message: `Deleted ${blobs.length} files for case ${caseId}`,
-      filesDeleted: blobs.length,
+      message: `Deleted ${filesDeleted} files for case ${caseId}`,
+      filesDeleted,
     });
   } catch (error: any) {
     console.error('Error during cleanup:', error);

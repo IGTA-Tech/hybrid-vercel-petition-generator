@@ -1,6 +1,25 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+.next/
+out/
+dist/
+build/
+
+# Vercel
 .vercel
+
+# Netlify
+.netlify
+
+# Environment variables
 .env
 .env.local
 .env*.local
+
+# Documentation (deployment-specific)
 VERCEL_ENV_SETUP.md
 *_ENV_SETUP.md
