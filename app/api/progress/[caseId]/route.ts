@@ -1,26 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getProgress } from '@/app/lib/netlify-storage';
 
-// In-memory storage (shared with generate route) - works on Netlify
-const globalForProgress = global as unknown as { progress?: Map<string, any> };
-const progress = globalForProgress.progress ?? new Map<string, any>();
-
-// Always persist to global - Netlify functions have better instance reuse
-globalForProgress.progress = progress;
-
+// Using Netlify Blobs for persistent progress tracking
 export async function GET(
   request: NextRequest,
   { params }: { params: { caseId: string } }
 ) {
   const caseId = params.caseId;
 
-  const progressData = progress.get(caseId);
+  // Get progress from Netlify Blobs
+  const progressData = await getProgress(caseId);
 
   if (!progressData) {
     return NextResponse.json(
       {
         stage: 'Not Found',
         progress: 0,
-        message: 'Case not found',
+        message: 'Case not found - it may have been cleaned up or the ID is invalid',
         status: 'error',
         error: 'Case ID not found',
       },
@@ -28,5 +24,11 @@ export async function GET(
     );
   }
 
-  return NextResponse.json(progressData);
+  // Convert to format expected by frontend
+  return NextResponse.json({
+    stage: progressData.currentStep,
+    progress: progressData.progress,
+    message: progressData.message,
+    status: progressData.progress === 100 ? 'completed' : 'processing',
+  });
 }

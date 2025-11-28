@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { processFile } from '@/app/lib/file-processor';
-import fs from 'fs';
-import path from 'path';
+import { uploadFile } from '@/app/lib/netlify-storage';
 
-// Netlify-compatible file upload using local /tmp storage
+// Netlify Blobs file upload - persistent storage across function instances
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -46,29 +45,25 @@ export async function POST(request: NextRequest) {
     const url = new URL(request.url);
     const caseId = url.searchParams.get('caseId') || `temp_${Date.now()}`;
 
-    // Save to local /tmp directory (works on Netlify)
-    const tempDir = path.join('/tmp', 'uploads', caseId);
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir, { recursive: true });
-    }
-
-    const fileName = `${Date.now()}_${file.name}`;
-    const filePath = path.join(tempDir, fileName);
+    // Convert file to buffer
     const fileBuffer = Buffer.from(await file.arrayBuffer());
-    fs.writeFileSync(filePath, fileBuffer);
+
+    // Generate unique filename
+    const fileName = `${Date.now()}_${file.name}`;
+
+    // Upload to Netlify Blobs (persistent storage)
+    const blobKey = await uploadFile(caseId, fileName, fileBuffer);
+    console.log(`[Upload] Uploaded ${fileName} to Netlify Blobs: ${blobKey}`);
 
     // Process file to extract text
     const processed = await processFile(file);
 
-    // Create a local URL for the file
-    const localUrl = `/tmp/uploads/${caseId}/${fileName}`;
-
     return NextResponse.json({
       success: true,
       blob: {
-        url: localUrl,
-        pathname: filePath,
-        downloadUrl: localUrl,
+        url: blobKey,
+        pathname: blobKey,
+        downloadUrl: blobKey,
       },
       processed: {
         fileName: processed.fileName,
@@ -77,8 +72,8 @@ export async function POST(request: NextRequest) {
         pageCount: processed.pageCount,
         summary: processed.summary,
         extractedText: processed.extractedText, // Include full text for autofill
-        // Store local file path for later access
-        blobUrl: localUrl,
+        // Store blob key for later retrieval
+        blobUrl: blobKey,
       },
     });
   } catch (error: any) {

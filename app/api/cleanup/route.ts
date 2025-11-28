@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
+import { cleanup } from '@/app/lib/netlify-storage';
 
 /**
- * Cleanup endpoint to delete temporary files from local /tmp storage
- * Deletes all files with a specific caseId prefix
+ * Cleanup endpoint to delete case data from Netlify Blobs
+ * Deletes all uploaded files, generated documents, case metadata, and progress data
  */
 export async function POST(request: NextRequest) {
   try {
@@ -19,43 +18,27 @@ export async function POST(request: NextRequest) {
     }
 
     // Don't allow cleanup of 'temp' prefix (too broad)
-    if (caseId === 'temp') {
+    if (caseId === 'temp' || caseId.startsWith('temp_')) {
       return NextResponse.json(
         { error: 'Cannot cleanup generic "temp" prefix. Provide specific caseId.' },
         { status: 400 }
       );
     }
 
-    console.log(`Starting cleanup for caseId: ${caseId}`);
+    console.log(`[Cleanup] Starting cleanup for caseId: ${caseId}`);
 
-    // Clean up /tmp/uploads directory
-    const tempDir = path.join('/tmp', 'uploads', caseId);
-    let filesDeleted = 0;
+    // Delete all case data from Netlify Blobs
+    const deletedCount = await cleanup(caseId);
 
-    if (fs.existsSync(tempDir)) {
-      const files = fs.readdirSync(tempDir);
-      filesDeleted = files.length;
-
-      // Delete all files in the directory
-      files.forEach(file => {
-        fs.unlinkSync(path.join(tempDir, file));
-      });
-
-      // Remove the directory
-      fs.rmdirSync(tempDir);
-
-      console.log(`Cleanup completed for caseId: ${caseId}. Deleted ${filesDeleted} files.`);
-    } else {
-      console.log(`No files found for caseId: ${caseId}`);
-    }
+    console.log(`[Cleanup] Completed for caseId: ${caseId}. Deleted ${deletedCount} items.`);
 
     return NextResponse.json({
       success: true,
-      message: `Deleted ${filesDeleted} files for case ${caseId}`,
-      filesDeleted,
+      message: `Deleted ${deletedCount} items for case ${caseId}`,
+      itemsDeleted: deletedCount,
     });
   } catch (error: any) {
-    console.error('Error during cleanup:', error);
+    console.error('[Cleanup] Error during cleanup:', error);
     return NextResponse.json(
       {
         error: 'Failed to cleanup files',

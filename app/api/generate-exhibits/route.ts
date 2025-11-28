@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
 import Anthropic from '@anthropic-ai/sdk';
 import { archiveUrls } from '@/app/lib/archive-org';
 import { convertUrlsToPdfs } from '@/app/lib/api2pdf';
 import { generateCoverSheet, ExhibitInfo } from '@/app/lib/exhibit-cover-sheet';
 import { mergePdfs, getPdfPageCount } from '@/app/lib/pdf-merger';
 import { generateExhibitList, CriterionGroup, ExhibitEntry } from '@/app/lib/exhibit-list-generator';
+import { getFileByKey, uploadFile } from '@/app/lib/netlify-storage';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -533,20 +532,13 @@ Return ONLY a JSON object with this exact structure:
           const exhibitLetter = alphabet[criterionCount];
           exhibitsByCriterion.set(criterionNumber, criterionCount + 1);
 
-          // Download the document from Blob storage with timeout and size limit
-          const response = await axios.get(doc.blobUrl, {
-            responseType: 'arraybuffer',
-            timeout: 30000, // 30 second timeout
-            maxContentLength: 50 * 1024 * 1024, // 50MB max
-            maxBodyLength: 50 * 1024 * 1024
-          });
+          // Get the document from Netlify Blobs
+          const documentBuffer = await getFileByKey(doc.blobUrl);
 
-          if (!response.data) {
-            console.error(`No data received for ${doc.fileName}`);
+          if (!documentBuffer) {
+            console.error(`No data received for ${doc.fileName} from Netlify Blobs`);
             continue;
           }
-
-          const documentBuffer = Buffer.from(response.data);
 
           // Only process PDF documents for exhibits
           if (doc.fileType !== 'application/pdf') {
@@ -656,47 +648,13 @@ Return ONLY a JSON object with this exact structure:
     const combinedPdfBytes = await combinedPdf.save();
     const combinedBuffer = Buffer.from(combinedPdfBytes);
 
-    // Cleanup temporary uploaded documents BEFORE uploading combined PDF
-    if (hasDocs) {
-      try {
-        console.log('Cleaning up temporary uploaded documents from /tmp...');
+    // Note: Uploaded documents in Netlify Blobs are cleaned up by the cleanup endpoint
+    // No need to manually delete them here
 
-        // Delete each uploaded document from local /tmp storage
-        uploadedDocuments.forEach(doc => {
-          try {
-            // Extract caseId and filename from blobUrl path
-            const urlParts = doc.blobUrl.split('/');
-            const caseId = urlParts[urlParts.length - 2];
-            const fileName = urlParts[urlParts.length - 1];
-            const filePath = path.join('/tmp', 'uploads', caseId, fileName);
-
-            if (fs.existsSync(filePath)) {
-              fs.unlinkSync(filePath);
-              console.log(`Deleted: ${fileName}`);
-            }
-          } catch (err) {
-            console.error(`Failed to delete ${doc.fileName}:`, err);
-            // Continue even if one delete fails
-          }
-        });
-
-        console.log(`Cleaned up ${uploadedDocuments.length} temporary files`);
-      } catch (cleanupError) {
-        console.error('Error during cleanup (non-fatal):', cleanupError);
-        // Don't fail the request if cleanup fails
-      }
-    }
-
-    // Save combined PDF to local /tmp storage
-    const tempDir = path.join('/tmp', 'exhibits', caseId);
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir, { recursive: true });
-    }
-
-    const pdfPath = path.join(tempDir, 'Complete_Exhibits.pdf');
-    fs.writeFileSync(pdfPath, combinedBuffer);
-
-    const localUrl = `/tmp/exhibits/${caseId}/Complete_Exhibits.pdf`;
+    // Save combined PDF to Netlify Blobs
+    const exhibitFileName = 'Complete_Exhibits.pdf';
+    const blobKey = await uploadFile(caseId, exhibitFileName, combinedBuffer);
+    console.log(`[Exhibits] Saved combined PDF to Netlify Blobs: ${blobKey}`);
 
     return NextResponse.json({
       success: true,
@@ -707,7 +665,7 @@ Return ONLY a JSON object with this exact structure:
         converted: uploadedExhibits.length,
         failed: (totalUrls + totalDocs) - uploadedExhibits.length,
         estimatedCost: totalCost,
-        combinedPdfUrl: localUrl,
+        combinedPdfUrl: blobKey,
         criterionGroups: sortedGroups.map(g => ({
           criterionNumber: g.criterionNumber,
           criterionName: g.criterionName,

@@ -1,46 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
+import { getDocument } from '@/app/lib/netlify-storage';
 
-// In-memory storage (shared with generate route) - works on Netlify
-const globalForCases = global as unknown as { cases?: Map<string, any> };
-const cases = globalForCases.cases ?? new Map<string, any>();
-
-// Always persist to global - Netlify functions have better instance reuse
-globalForCases.cases = cases;
-
+// Using Netlify Blobs for persistent document storage
 export async function GET(
   request: NextRequest,
   { params }: { params: { caseId: string; docIndex: string } }
 ) {
   const { caseId, docIndex } = params;
 
-  const petitionCase = cases.get(caseId);
-
-  if (!petitionCase) {
-    return NextResponse.json({ error: 'Case not found' }, { status: 404 });
-  }
-
   const docIndexNum = parseInt(docIndex);
-  const document = petitionCase.documents[docIndexNum];
+
+  // Get document from Netlify Blobs
+  const document = await getDocument(caseId, docIndexNum);
 
   if (!document) {
-    return NextResponse.json({ error: 'Document not found' }, { status: 404 });
+    return NextResponse.json(
+      { error: 'Document not found - it may have been cleaned up or the case/document index is invalid' },
+      { status: 404 }
+    );
   }
 
-  // Try to read from file system first
-  const filePath = path.join(process.cwd(), 'public', 'outputs', caseId, document.name);
-
-  let content = document.content;
-
-  if (fs.existsSync(filePath)) {
-    content = fs.readFileSync(filePath, 'utf-8');
-  }
-
-  return new NextResponse(content, {
+  // Return document content as markdown file
+  return new NextResponse(document.content, {
     headers: {
       'Content-Type': 'text/markdown',
-      'Content-Disposition': `attachment; filename="${document.name}"`,
+      'Content-Disposition': `attachment; filename="${document.title}"`,
     },
   });
 }

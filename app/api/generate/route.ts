@@ -2,17 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { BeneficiaryInfo, PetitionCase } from '@/app/types';
 import { generateAllDocuments } from '@/app/lib/document-generator';
 import { sendDocumentsEmail } from '@/app/lib/email-service';
-import fs from 'fs';
-import path from 'path';
+import {
+  saveCase,
+  getCase,
+  updateProgress,
+  updateCaseStatus,
+  saveDocument,
+} from '@/app/lib/netlify-storage';
 
-// In-memory storage - works on Netlify due to persistent function instances
-const globalForCases = global as unknown as { cases?: Map<string, PetitionCase>; progress?: Map<string, any> };
-const cases = globalForCases.cases ?? new Map<string, PetitionCase>();
-const progress = globalForCases.progress ?? new Map<string, any>();
-
-// Always persist to global - Netlify functions have better instance reuse than Vercel
-globalForCases.cases = cases;
-globalForCases.progress = progress;
+// Using Netlify Blobs for persistent storage across function instances
 
 export async function POST(request: NextRequest) {
   try {
@@ -30,27 +28,42 @@ export async function POST(request: NextRequest) {
     // This ensures files uploaded earlier use the same caseId as the generation process
     const caseId = beneficiaryInfo.caseId || `case_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
-    // Initialize case
-    const petitionCase: PetitionCase = {
-      id: caseId,
-      beneficiaryInfo,
-      documents: [],
-      status: 'processing',
-      createdAt: new Date(),
+    // Initialize case in Netlify Blobs
+    const petitionCase = {
+      caseId,
+      beneficiary: {
+        name: beneficiaryInfo.fullName,
+        visaType: beneficiaryInfo.visaType,
+        field: beneficiaryInfo.field || '',
+        email: beneficiaryInfo.recipientEmail,
+        achievements: beneficiaryInfo.achievements,
+        background: beneficiaryInfo.background,
+        urls: beneficiaryInfo.urls,
+      },
+      status: 'processing' as const,
+      uploadedDocs: beneficiaryInfo.uploadedDocuments?.map(doc => ({
+        fileName: doc.fileName,
+        blobKey: doc.blobUrl,
+        size: doc.wordCount || 0,
+        type: doc.fileType || 'unknown',
+      })) || [],
+      generatedDocs: [],
+      createdAt: Date.now(),
     };
 
-    cases.set(caseId, petitionCase);
+    // Save case to Netlify Blobs
+    await saveCase(caseId, petitionCase);
+    console.log(`[Generate] Created case ${caseId} in Netlify Blobs`);
 
-    // Initialize progress
-    progress.set(caseId, {
-      stage: 'Initializing',
+    // Initialize progress in Netlify Blobs
+    await updateProgress(caseId, {
+      currentStep: 'Initializing',
       progress: 0,
       message: 'Starting document generation...',
-      status: 'processing',
     });
 
     // Start generation in background - NO AWAIT!
-    // This allows 30+ minute generations without Vercel timeout
+    // This allows 30+ minute generations without timeout
     generateDocumentsAsync(caseId, beneficiaryInfo);
 
     return NextResponse.json({ caseId, status: 'processing' });
@@ -65,12 +78,12 @@ export async function POST(request: NextRequest) {
 
 async function generateDocumentsAsync(caseId: string, beneficiaryInfo: BeneficiaryInfo) {
   try {
-    const result = await generateAllDocuments(beneficiaryInfo, (stage, prog, message) => {
-      progress.set(caseId, {
-        stage,
+    // Generate documents with progress updates to Netlify Blobs
+    const result = await generateAllDocuments(beneficiaryInfo, async (stage, prog, message) => {
+      await updateProgress(caseId, {
+        currentStep: stage,
         progress: prog,
         message,
-        status: 'processing',
       });
     });
 
@@ -109,61 +122,48 @@ async function generateDocumentsAsync(caseId: string, beneficiaryInfo: Beneficia
       },
     ];
 
-    // Save documents to disk
-    const outputDir = path.join(process.cwd(), 'public', 'outputs', caseId);
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true });
+    // Save documents to Netlify Blobs instead of local filesystem
+    for (let i = 0; i < documents.length; i++) {
+      const doc = documents[i];
+      const blobKey = await saveDocument(caseId, i, {
+        title: doc.name,
+        content: doc.content,
+      });
+      console.log(`[Generate] Saved document ${i} to Netlify Blobs: ${blobKey}`);
     }
 
-    documents.forEach((doc) => {
-      fs.writeFileSync(path.join(outputDir, doc.name), doc.content);
-    });
-
-    // Update case
-    const petitionCase = cases.get(caseId);
-    if (petitionCase) {
-      petitionCase.documents = documents;
-      petitionCase.status = 'completed';
-      petitionCase.completedAt = new Date();
-      cases.set(caseId, petitionCase);
-    }
+    // Update case status to completed
+    await updateCaseStatus(caseId, 'completed');
+    console.log(`[Generate] Case ${caseId} completed successfully`);
 
     // Send email
-    progress.set(caseId, {
-      stage: 'Sending Email',
+    await updateProgress(caseId, {
+      currentStep: 'Sending Email',
       progress: 95,
       message: 'Sending documents to your email...',
-      status: 'processing',
     });
 
     const emailSent = await sendDocumentsEmail(beneficiaryInfo, documents);
 
     // Update final progress
-    progress.set(caseId, {
-      stage: 'Complete',
+    await updateProgress(caseId, {
+      currentStep: 'Complete',
       progress: 100,
       message: emailSent
         ? 'Documents generated and emailed successfully!'
         : 'Documents generated! (Email delivery failed - please download manually)',
-      status: 'completed',
-      documents,
     });
+
+    console.log(`[Generate] Case ${caseId} finished. Email sent: ${emailSent}`);
   } catch (error: any) {
     console.error('Error generating documents:', error);
 
-    progress.set(caseId, {
-      stage: 'Error',
+    await updateProgress(caseId, {
+      currentStep: 'Error',
       progress: 0,
-      message: 'An error occurred during generation',
-      status: 'error',
-      error: error.message,
+      message: 'An error occurred during generation: ' + error.message,
     });
 
-    const petitionCase = cases.get(caseId);
-    if (petitionCase) {
-      petitionCase.status = 'error';
-      petitionCase.error = error.message;
-      cases.set(caseId, petitionCase);
-    }
+    await updateCaseStatus(caseId, 'failed', error.message);
   }
 }
